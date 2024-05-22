@@ -84,23 +84,22 @@ module Nanomsg
 #include "nanomsg/bus.h"
 #include "nanomsg/tcp.h"
 
-import Data.ByteString (ByteString)
 -- import qualified Data.ByteString.Lazy as L
+import Control.Concurrent (threadWaitRead, threadWaitWrite)
+import Control.Exception (Exception, throwIO)
+import Control.Exception.Base (bracket)
+import Control.Monad (void)
+import Data.ByteString (ByteString)
+import Data.Typeable (Typeable)
+import Foreign (peek, poke, alloca)
+import Foreign.C.String
+import Foreign.C.Types
+import Foreign.Ptr
+import Foreign.Storable (sizeOf)
+import System.Posix.Types (Fd(..))
+import Text.Printf (printf)
 import qualified Data.ByteString.Char8 as C
 import qualified Data.ByteString.Unsafe as U
-import Foreign (peek, poke, alloca)
-import Foreign.Ptr
-import Foreign.C.Types
-import Foreign.C.String
-import Foreign.Storable (sizeOf)
-import Control.Applicative ( (<$>) )
-import Control.Exception.Base (bracket)
-import Control.Exception (Exception, throwIO)
-import Data.Typeable (Typeable)
-import Control.Monad (void)
-import Text.Printf (printf)
-import Control.Concurrent (threadWaitRead, threadWaitWrite)
-import System.Posix.Types (Fd(..))
 
 
 -- * Data and typedefs
@@ -349,7 +348,7 @@ foreign import ccall safe "nn.h nn_send"
 -- NN_EXPORT int nn_recv (int s, void *buf, size_t len, int flags);
 foreign import ccall safe "nn.h nn_recv"
     c_nn_recv :: CInt -> Ptr CString -> CInt -> CInt -> IO CInt
-
+    
 -- NN_EXPORT int nn_freemsg (void *msg);
 foreign import ccall safe "nn.h nn_freemsg"
     c_nn_freemsg :: Ptr CChar -> IO CInt
@@ -471,15 +470,13 @@ send (Socket t sid) string =
 
 -- | Blocking receive.
 recv :: Receiver a => Socket a -> IO ByteString
-recv (Socket t sid) =
+recv (Socket t sid) = do
     alloca $ \ptr -> do
         len <- throwErrnoIfMinus1RetryMayBlock
                 "recv"
                 (c_nn_recv sid ptr (#const NN_MSG) (#const NN_DONTWAIT))
                 (getOptionFd (Socket t sid) (#const NN_RCVFD) >>= threadWaitRead)
-        buf <- peek ptr
-        str <- C.packCStringLen (buf, fromIntegral len)
-        throwErrnoIfMinus1_ "recv freeing message buffer" $ c_nn_freemsg buf
+        str <- C.packCStringLen (castPtr ptr, fromIntegral len)
         return str
 
 -- | Nonblocking receive function.
@@ -489,9 +486,7 @@ recv' (Socket _ sid) =
         len <- c_nn_recv sid ptr (#const NN_MSG) (#const NN_DONTWAIT)
         if len >= 0
             then do
-                buf <- peek ptr
-                str <- C.packCStringLen (buf, fromIntegral len)
-                throwErrnoIfMinus1_ "recv' freeing message buffer" $ c_nn_freemsg buf
+                str <- C.packCStringLen (castPtr ptr, fromIntegral len)
                 return $ Just str
             else do
                 errno <- c_nn_errno

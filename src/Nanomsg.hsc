@@ -45,6 +45,7 @@ module Nanomsg
         , bind
         , connect
         , send
+        , recvMalloc
         , recv
         , recv'
         , subscribe
@@ -91,7 +92,7 @@ import Control.Exception.Base (bracket)
 import Control.Monad (void)
 import Data.ByteString (ByteString)
 import Data.Typeable (Typeable)
-import Foreign (peek, poke, alloca)
+import Foreign (peek, poke, alloca, mallocBytes, free)
 import Foreign.C.String
 import Foreign.C.Types
 import Foreign.Ptr
@@ -469,6 +470,15 @@ send (Socket t sid) string =
             (getOptionFd (Socket t sid) (#const NN_SNDFD) >>= threadWaitWrite)
 
 -- | Blocking receive.
+recvMalloc :: Receiver a => Socket a -> Int -> IO ByteString
+recvMalloc (Socket t sid) numBytes = do
+  ptr <- mallocBytes numBytes
+  -- receive by blocking the thread
+  len <- c_nn_recv sid ptr (#const NN_MSG) 0 -- (#const NN_DONTWAIT)
+  str <- C.packCStringLen (castPtr ptr, fromIntegral len)
+  free ptr
+  return str
+
 recv :: Receiver a => Socket a -> IO ByteString
 recv (Socket t sid) = do
     alloca $ \ptr -> do

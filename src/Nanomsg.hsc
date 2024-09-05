@@ -45,6 +45,7 @@ module Nanomsg
         , bind
         , connect
         , send
+        , sendNonblocking
         , recv
         , recv'
         , subscribe
@@ -468,6 +469,13 @@ send (Socket t sid) string =
             "send"
             (c_nn_send sid ptr (fromIntegral len) (#const NN_DONTWAIT))
             (getOptionFd (Socket t sid) (#const NN_SNDFD) >>= threadWaitWrite)
+
+-- | Nonblocking function for sending a message
+sendNonblocking :: Sender a => Socket a -> ByteString -> IO Integer
+sendNonblocking (Socket t sid) string =
+  U.unsafeUseAsCStringLen string $ \(ptr, len) -> do
+    ret <- c_nn_send sid ptr (fromIntegral len) (#const NN_DONTWAIT)
+    pure $ toInteger ret
 
 -- | Blocking receive.
 recv :: Receiver a => Socket a -> IO ByteString

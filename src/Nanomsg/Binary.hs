@@ -36,6 +36,7 @@ module Nanomsg.Binary
   , bind
   , connect
   , send
+  , sendNonblocking
   , recv
   , recv'
   , subscribe
@@ -68,7 +69,7 @@ module Nanomsg.Binary
   ) where
 
 import Control.Applicative
-import Nanomsg hiding (send,recv,recv')
+import Nanomsg hiding (send, sendNonblocking, recv, recv')
 import qualified Nanomsg as NM
 import Data.Binary
 import Data.ByteString.Lazy
@@ -79,6 +80,13 @@ send
   -> dat
   -> IO ()
 send s d = NM.send s (toStrict . encode $ d)
+
+sendNonblocking
+  :: (Sender s, Binary dat)
+  => Socket s
+  -> dat
+  -> IO Integer
+sendNonblocking s d = NM.sendNonblocking s (toStrict . encode $ d)
 
 recv
   :: (Receiver s, Binary dat)
